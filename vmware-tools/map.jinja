@@ -1,47 +1,94 @@
-{##
-# set defaults since deploying from sources
-##}
+{## set defaults since deploying from sources ##}
 {% set vmware_defaults = {
   'tools':
   {
     'latest': 'VMwareTools-9.4.15-2827462.tar.gz',
     'hash': 'md5=6d46188024553a4576977b54caae5403',
     'source': 'http://webserver/Latest_VMware_Tools/VMwareTools-9.4.15-2827462.tar.gz',
+    'env': {}
   },
 } %}
 
-{##
-# merge the default settings with pillar data
-##}
-{% set vmware = salt['pillar.get']('vmware:tools', default=vmware_defaults.tools,merge=True) %}
+{## merge the default settings with pillar data ##}
+{% set vmware_tools = salt['pillar.get']('vmware:tools', default=vmware_defaults.tools,merge=True) %}
 
-{##
-# get the settings for the osmajorrelease grain
-##}
+{## get the settings for the osmajorrelease grain ##}
 {% set os_ver_lookup = {
   'RedHat':
   {
-    '7':
+    7:
     {
-      'include': 'open-vm-tools',
+      'use_module': 'open-vm-tools',
+      'package_name': 'open-vm-tools',
+      'service_name': 'vmtoolsd'
     },
-    '6':
+    6:
     {
-      'include': 'vmware-tools',
+      'use_module': 'vmware-tools',
+      'check_command': "initctl list |grep vmware |grep running"
     },
   },
   'CentOS':
   {
-    '7':
+    7:
     {
-      'include': 'open-vm-tools',
+      'use_module': 'open-vm-tools',
+      'package_name': 'open-vm-tools',
+      'service_name': 'vmtoolsd'
     },
-    '6':
+    6:
     {
-      'include': 'vmware-tools',
+      'use_module': 'vmware-tools',
+      'check_command': "initctl list |grep vmware |grep running"
     },
   },
+  'Ubuntu':
+  {
+    16:
+    {
+      'use_module': 'open-vm-tools',
+      'package_name': 'open-vm-tools',
+      'service_name': 'open-vm-tools'
+    },
+    14:
+    {
+      'use_module': 'vmware-tools',
+      'check_command': "status vmware-tools | grep vmware-tools| grep running"
+    }
+  },
+  'Debian':
+  {
+    9:
+    {
+      'use_module': 'open-vm-tools',
+      'package_name': 'open-vm-tools',
+      'service_name': 'open-vm-tools'
+    },
+    8:
+    {
+      'use_module': 'vmware-tools',
+      'check_command': "/etc/init.d/vmware-tools list |grep vmtoolsd |grep running"
+    },
+    7:
+    {
+      'use_module': 'vmware-tools',
+      'check_command': "/etc/init.d/vmware-tools list |grep vmtoolsd |grep running"
+    },
+    6:
+    {
+      'use_module': 'vmware-tools',
+      'check_command': "/etc/init.d/vmware-tools list |grep vmtoolsd |grep running"
+    }
+  }
 } %}
 
-{% set os_ver_map = os_ver_lookup.get(grains.os, {}) %}
-{% set include_file = os_ver_map.get(grains.osmajorrelease, {}) %}
+{% set os_map = os_ver_lookup.get(grains.os, {}) %}
+
+{## workaround: salt-minion on Debian squeeze does not support grain.osmajorrelease ##}
+{% if grains.oscodename == "squeeze" %}
+  {% set os_ver_map = os_ver_lookup["Debian"][6] %}
+{% else %}
+  {% set os_ver_map = os_map.get(grains.osmajorrelease | int, {}) %}
+{% endif %}
+
+{% do vmware_tools.env.update(os_ver_map) %}
